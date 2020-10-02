@@ -1,0 +1,129 @@
+#include "Arduino.h"
+#include <Encoder.h>
+
+//Red - motor power (connects 1 motor terminal) command voltage? pin 9
+//black - motor power (connects other motor terminal) ground?
+//green - encoder Ground(Connect to GND)
+//Blue - encoder VCC(Connect to VCC)
+//Yellow - encoder A output (Connect to pin 2)
+//White Encoder B output (Connect to pin 11)
+
+int period = 50; //50 ms sample period
+const int commandVoltage = 255; //pwm equivalent for Volts
+int voltage = 10; //voltage input on pin 10
+int voltVal = 0;
+long prevPos = 0;    // in radians
+float angPos = 0; // in radians
+int long motorPos = 0;
+float angVel = 0; // in rad/sec
+unsigned long currTime = 0;
+const int encA = 2; //Connected to pin 2
+const int encB =11; //Connected to pin 3
+int valA;           //Track A and B
+int valB;
+int pin4 = 4;
+//Motor 1 direction input
+int m1dir = 7;
+//Motor 2 direction input
+int m2dir = 8;
+
+Encoder motorEncoder(encA, encB);
+// variables for computation
+int counter = 0;
+bool docounting = false;
+
+// varaibles for serial communication
+String InputString = ""; // a string to hold incoming data
+bool StringComplete = false;
+
+
+void setup() {
+  // put your setup code here, to run once:
+  Serial.begin(115200);
+  // reserve 200 bytes for the inputString:
+  InputString.reserve(200);
+  pinMode(voltage, OUTPUT);
+  pinMode(m2dir, HIGH);
+  pinMode(pin4, OUTPUT);
+  digitalWrite(pin4, HIGH);
+  Serial.println("Ready!"); // Let anyone on the other end of the serial line know that Arduino is ready
+
+}
+void loop() {
+  analogWrite(voltage, commandVoltage); //100% duty cycle = 5 V;
+  // Change behavior based on serial input
+  if (StringComplete) {
+    switch (InputString.charAt(0)) {
+      case 'S':
+        docounting = true;
+        break;
+      case 'E':
+        docounting = false;
+        break;
+    }
+    StringComplete = false;
+  }
+
+  // Some main code
+  if (docounting) {
+    //analogWrite(voltage, commandVoltage); //100% duty cycle = 5 V;
+    if (millis() >= 3000) {
+      Serial.println("Finished");
+      docounting = false;
+    }
+  }
+  else {
+    counter = 0;
+  }
+  //analogWrite(voltage, commandVoltage);
+  currTime = millis();
+
+  Serial.print(millis());
+  Serial.print("\t");
+  Serial.print(angVel);
+
+ /* Serial.println("");
+  Serial.print(angPos);
+  Serial.println("");
+  Serial.print(prevPos);*/
+ 
+ 
+  
+   while(millis() < currTime + period)
+    {
+      motorPos = motorEncoder.read();
+    }
+    motorPos = motorEncoder.read();
+    angPos = 50*motorPos*2*3.14/3200;
+    angVel = (angPos-prevPos)/(period);
+  Serial.println("");
+  Serial.print(motorPos);
+  Serial.println("");
+  Serial.print(angPos);
+  Serial.println("");
+  Serial.print(prevPos);
+  Serial.println("");
+    prevPos = angPos;
+}
+
+
+/*
+  SerialEvent occurs whenever a new data comes in the
+ hardware serial RX.  This routine is run between each
+ time loop() runs, so using delay inside loop can delay
+ response.  Multiple bytes of data may be available.
+ */
+
+void serialEvent() {
+  while (Serial.available()) {
+    // get the new byte:
+    char inChar = (char)Serial.read();
+    // add it to the inputString:
+    InputString += inChar;
+    // if the incoming character is a newline, set a flag
+    // so the main loop can do something about it:
+    if (inChar == '\n') {
+      StringComplete = true;
+    }
+  }
+}
