@@ -27,6 +27,7 @@ bus = smbus.SMBus(1)
 
 # Arduino address
 address = 0x04
+pos = 5
 
 def writeNumber(value):
     bus.write_byte(address, value)
@@ -49,6 +50,7 @@ def main():
     cap = cv2.VideoCapture(0)
     camera_matrix = np.array([[1, 0, 0], [0, 1, 0], [0,0,1]])
     dist_co = np.array([[1, 1, 1, 1]])
+    print ("Use aruco in camera to get wheel to move.")
     while(True):
 
     # Aruco Detection
@@ -61,14 +63,25 @@ def main():
         if corners:
             try:
                 center = get_center(corners)
-                if(center[0] > w/2 and center[1] < h/2): loc, pos = "Sector 1: Postion 0", 0
-                if(center[0] < w/2 and center[1] < h/2): loc, pos = "Sector 2: Postion 1", 1
-                if(center[0] < w/2 and center[1] > h/2): loc, pos = "Sector 3: Postion 0", 2
-                if(center[0] > w/2 and center[1] > h/2): loc, pos = "Sector 4: Postion 0", 3
+                if(center[0] > w/2 and center[1] < h/2): loc, pos = "Sector 1", 0
+                if(center[0] < w/2 and center[1] < h/2): loc, pos = "Sector 2", 1
+                if(center[0] < w/2 and center[1] > h/2): loc, pos = "Sector 3", 2
+                if(center[0] > w/2 and center[1] > h/2): loc, pos = "Sector 4", 3
                 cv2.putText(frame, loc, org = (0, 400), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color = (0, 0, 0))
-                debug("The center is: " + str(center))
-                debug("The x value of center is: " + str(center[0]))
-                debug("The y value of center is: " + str(center[1]))
+                #debug("The center is: " + str(center))
+                #debug("The x value of center is: " + str(center[0]))
+                #debug("The y value of center is: " + str(center[1]))
+
+                writeNumber(pos)
+                print ("RPI: Hi Arduino, I sent you ", pos)
+
+                number = readNumber()
+                print ("Arduino: Hey RPI, I received ", number)
+
+                
+                #lcd.clear()
+                #lcd.message = "Sent: " + str(pos) + "\nGot:  " + str(number)
+                
             except: pass
                 
         rvec, tvec,_ = aruco.estimatePoseSingleMarkers(corners, 0.05, camera_matrix, dist_co)
@@ -83,16 +96,6 @@ def main():
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
 
-        writeNumber(pos)
-        print ("RPI: Hi Arduino, I sent you ", pos)
-        time.sleep(1) 
-
-        number = readNumber()
-        print ("Arduino: Hey RPI, the received number is ", number)
-
-        lin1 = "sent: " + str(var)
-        lin2 = "\ngot:  " + str(number)
-        lcd.message = lin1 + lin2
         
     cap.release()
     cv2.destroyAllWindows()
