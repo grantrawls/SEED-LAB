@@ -27,7 +27,6 @@ bus = smbus.SMBus(1)
 
 # Arduino address
 address = 0x04
-pos = 5
 
 def writeNumber(value):
     bus.write_byte(address, value)
@@ -47,6 +46,7 @@ def debug(string):
         print(string)
 
 def main():
+    pos, prevPos = 4, 4
     cap = cv2.VideoCapture(0)
     camera_matrix = np.array([[1, 0, 0], [0, 1, 0], [0,0,1]])
     dist_co = np.array([[1, 1, 1, 1]])
@@ -68,9 +68,6 @@ def main():
                 if(center[0] < w/2 and center[1] > h/2): loc, pos = "Sector 3", 2
                 if(center[0] > w/2 and center[1] > h/2): loc, pos = "Sector 4", 3
                 cv2.putText(frame, loc, org = (0, 400), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color = (0, 0, 0))
-                #debug("The center is: " + str(center))
-                #debug("The x value of center is: " + str(center[0]))
-                #debug("The y value of center is: " + str(center[1]))
 
                 writeNumber(pos)
                 print ("RPI: Hi Arduino, I sent you ", pos)
@@ -78,9 +75,10 @@ def main():
                 number = readNumber()
                 print ("Arduino: Hey RPI, I received ", number)
 
-                
-                #lcd.clear()
-                #lcd.message = "Sent: " + str(pos) + "\nGot:  " + str(number)
+                if prevPos != pos:  
+                    lcd.clear()
+                    lcd.message = "Sent: " + str(pos) + "\nGot:  " + str(number)
+                    prevPos = pos
                 
             except: pass
                 
