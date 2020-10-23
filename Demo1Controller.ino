@@ -1,5 +1,3 @@
-#include <Encoder.h>
-
 //Red - motor power (connects 1 motor terminal) 
 //black - motor power (connects other motor terminal) 
 //green - encoder Ground (Connect to GND)
@@ -30,23 +28,6 @@ const int outputA2 = 11;
 const int outputB1 = 3;
 const int outputB2 = 12;
 
-
-//int currentRead1;
-//int currentRead2;
-//int deltaTimeISRB = 0;
-//Control outputs
-
-int ctrlOut1 = 32; //0.5 Volts (1/24 of max PWM output)
-int ctrlOut2 = 32; 
-
-double rWheel = 0.06985; //meters
-double dWheels =  0.269875; //meters
-//Encoder Object Setup
-//Encoder myEnc1(outputA1,outputA2);
-//Encoder myEnc2(outputB1,outputB2);
-//long oldPosition1  = -999;
-//long oldPosition2  = -999;
-
 //Variables for encoder reading and associated calculations
 int countsA = 0;
 int countsB = 0;
@@ -56,20 +37,31 @@ double prevPositionA = 0;
 double prevPositionB = 0;
 double velocityA = 0;
 double velocityB = 0;
+int ISRtimeA = 0;
+int ISRtimeB = 0;
+int prevISRtimeA = 0;
+int prevISRtimeB = 0;
 double rhoDot = 0;
+double rhoInput = 0;
+double rhoOutput = 0;
 
-//Timing variables
 const int period = 10;  
 int currTime = 0; 
-int calcTime = 0; 
 int prevTime = 0;
-
-// varaibles for serial communication
-String InputString = ""; // a string to hold incoming data
-bool StringComplete = false;
-bool docounting = false;
+int elapsedTime = 0;
+double setPosition = 0;
+double currPosition = 0;
+double posError = 0;
+double prevError = 0;
+double cumError = 0;
+double rateError = 0;
+double rhoKp = 10; //UNITS
+double rhoKi = 0.5; //UNITS
+double posOutput = 0; 
+double rWheel = 0.06985; //meters
 
 void setup() {
+  // put your setup code here, to run once:
   pinMode(outputA1, INPUT_PULLUP);
   pinMode(outputB1, INPUT_PULLUP);
   pinMode(disable, OUTPUT);
@@ -79,59 +71,26 @@ void setup() {
   pinMode(m2pwm, OUTPUT);
   pinMode(sf, INPUT);
   digitalWrite(disable, HIGH);
-  digitalWrite(m1dir, LOW);
-  digitalWrite(m2dir, HIGH);
   Serial.begin(115200);
-
   //position and velocity reading scheme and interrupt declaration
   attachInterrupt(digitalPinToInterrupt(outputA1), encoderAISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(outputB1), encoderBISR, CHANGE);
-  // reserve 200 bytes for the inputString
-  InputString.reserve(200);
-  //Serial.println("Ready!"); // Let anyone on the other end of the serial line know that Arduino is ready
+  setPosition = 0.5; //meters
 }
 
-void loop() { 
+void loop() {
   // put your main code here, to run repeatedly:
-  analogWrite(m1pwm, ctrlOut1);
-  analogWrite(m2pwm, ctrlOut2);
-  //Calculate Position in rad
-  currTime = millis();
-  if(currTime - prevTime > period)
-  {
-    prevTime = currTime;
-    positionA = (countsA*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
-    positionB = (countsB*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
-    //Calculate velocity in rad/s
-    velocityA = (positionA - prevPositionA)/(period); //in rad/ms
-    velocityB = (positionB - prevPositionB)/(period); //in rad/ms
-    velocityA = velocityA*1000; //in rad/s
-    velocityB = velocityB*1000; //in rad/s
-    prevPositionA = positionA; //set previous position
-    prevPositionB = positionB; //set previous position
-    //Calculate rhoDot, the forward velocity
-    rhoDot = (rWheel*(velocityA + velocityB))/2;
-    Serial.print(prevTime);
-    Serial.print("\t ");
-    Serial.print(rhoDot);
-    Serial.println("");
-//        Serial.println("");
-//    Serial.println(countsA);
-//    Serial.println(countsB);
-  }
-
-  
-  if (currTime > 2000)
-  {
-    Serial.print("Finished ");
-  }
-
-  //delay(50 - (calcTime - currTime));
+  rhoInput = (positionA + positionB)/2;
+  rhoInput = rhoInput*rWheel;
+  rhoOutput = calcPI(rhoInput);
+  digitalWrite(m1dir, LOW);
+  digitalWrite(m2dir, HIGH);
+  analogWrite(m1pwm, rhoOutput);
+  analogWrite(m2pwm, rhoOutput);
 }
-
 void encoderAISR(void) //LEFT WHEEL
 {
-  //ISRtimeA = millis();
+  ISRtimeA = millis();
   //Compare A to B and count accordingly. 
   if (digitalRead(outputA1) == digitalRead(outputA2))
   {
@@ -141,12 +100,21 @@ void encoderAISR(void) //LEFT WHEEL
   {
     countsA += 2; //CW
   }
-  //prevISRtimeA = ISRtimeA;
+  //Motor A calculations (left wheel)
+  //Calculate Position in rad
+  positionA = (countsA*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
+  
+  //Calculate velocity in rad/s
+  velocityA = (positionA - prevPositionA)/(ISRtimeA - prevISRtimeA); //in rad/ms
+  velocityA = velocityA*1000; //in rad/s
+  
+  prevPositionA = positionA; //set previous position
+  prevISRtimeA = ISRtimeA;
 }
 
 void encoderBISR(void) //RIGHT WHEEL
 {
-  //ISRtimeB = millis();
+  ISRtimeB = millis();
   //Compare A to B and count accordingly.
   //NOTE: Counts opposite of left motor because of orientation to keep counts positive when going forward.
   if (digitalRead(outputB1) == digitalRead(outputB2))
@@ -157,5 +125,42 @@ void encoderBISR(void) //RIGHT WHEEL
   {
     countsB -= 2; //CW
   }
-  //prevISRtimeB = ISRtimeB;
+  //Motor B calculations (right wheel)
+  //Calculate Position in rad
+  positionB = (countsB*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
+  
+  //Calculate velocity in rad/s
+  velocityB = (positionB - prevPositionB)/(ISRtimeB - prevISRtimeB); //in rad/ms
+  velocityB = velocityB*1000; //in rad/s
+  prevPositionB = positionB; //set previous position
+  prevISRtimeB = ISRtimeB;
 }
+double calcPI(double input)
+{
+
+  Serial.print(input);
+  Serial.print("\t");
+  Serial.print(posError);
+  Serial.print("\t");
+  currTime = millis();
+  elapsedTime = currTime - prevTime;
+  posError = setPosition - input;
+  cumError += posError*elapsedTime;
+  rateError = (posError - prevError)/elapsedTime;
+  posOutput = rhoKp*posError + rhoKi*cumError; //V bar
+  posOutput = 255*(posOutput/16);
+  Serial.print(cumError);
+  Serial.print("\t");
+  Serial.print(posOutput);
+  Serial.println("");
+  if (posOutput > 127)
+  {
+    posOutput = 127;
+  }
+  prevError = posError;
+  prevTime = currTime;
+
+  return(posOutput);
+}
+
+  

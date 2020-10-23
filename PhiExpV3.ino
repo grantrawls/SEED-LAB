@@ -1,5 +1,3 @@
-#include <Encoder.h>
-
 //Red - motor power (connects 1 motor terminal) 
 //black - motor power (connects other motor terminal) 
 //green - encoder Ground (Connect to GND)
@@ -56,10 +54,14 @@ double prevPositionA = 0;
 double prevPositionB = 0;
 double velocityA = 0;
 double velocityB = 0;
-double rhoDot = 0;
+int ISRtimeA = 0;
+int ISRtimeB = 0;
+int prevISRtimeA = 0;
+int prevISRtimeB = 0;
+double phiDot = 0;
 
 //Timing variables
-const int period = 10;  
+const int period = 20; 
 int currTime = 0; 
 int calcTime = 0; 
 int prevTime = 0;
@@ -80,7 +82,7 @@ void setup() {
   pinMode(sf, INPUT);
   digitalWrite(disable, HIGH);
   digitalWrite(m1dir, LOW);
-  digitalWrite(m2dir, HIGH);
+  digitalWrite(m2dir, LOW);
   Serial.begin(115200);
 
   //position and velocity reading scheme and interrupt declaration
@@ -91,47 +93,34 @@ void setup() {
   //Serial.println("Ready!"); // Let anyone on the other end of the serial line know that Arduino is ready
 }
 
-void loop() { 
+void loop() { //include ISR to read encoder and calculate velocity
   // put your main code here, to run repeatedly:
+  //Serial.println(deltaTimeISRB);
+  
+  currTime = millis();
   analogWrite(m1pwm, ctrlOut1);
   analogWrite(m2pwm, ctrlOut2);
-  //Calculate Position in rad
-  currTime = millis();
-  if(currTime - prevTime > period)
-  {
-    prevTime = currTime;
-    positionA = (countsA*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
-    positionB = (countsB*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
-    //Calculate velocity in rad/s
-    velocityA = (positionA - prevPositionA)/(period); //in rad/ms
-    velocityB = (positionB - prevPositionB)/(period); //in rad/ms
-    velocityA = velocityA*1000; //in rad/s
-    velocityB = velocityB*1000; //in rad/s
-    prevPositionA = positionA; //set previous position
-    prevPositionB = positionB; //set previous position
-    //Calculate rhoDot, the forward velocity
-    rhoDot = (rWheel*(velocityA + velocityB))/2;
-    Serial.print(prevTime);
-    Serial.print("\t ");
-    Serial.print(rhoDot);
-    Serial.println("");
-//        Serial.println("");
-//    Serial.println(countsA);
-//    Serial.println(countsB);
-  }
-
   
+  //Calculate rhoDot, the forward velocity
+  phiDot = (rWheel*(velocityA - velocityB))/dWheels;
+  calcTime = millis();
+  prevTime = currTime;
+  Serial.print(currTime);
+  Serial.print("\t ");
+  Serial.print(phiDot);
+  Serial.println("");
+
   if (currTime > 2000)
   {
     Serial.print("Finished ");
   }
 
-  //delay(50 - (calcTime - currTime));
+ // delay(50 - (calcTime - currTime));
 }
 
 void encoderAISR(void) //LEFT WHEEL
 {
-  //ISRtimeA = millis();
+  ISRtimeA = millis();
   //Compare A to B and count accordingly. 
   if (digitalRead(outputA1) == digitalRead(outputA2))
   {
@@ -141,12 +130,21 @@ void encoderAISR(void) //LEFT WHEEL
   {
     countsA += 2; //CW
   }
-  //prevISRtimeA = ISRtimeA;
+  //Motor A calculations (left wheel)
+  //Calculate Position in rad
+  positionA = (countsA*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
+  
+  //Calculate velocity in rad/s
+  velocityA = (positionA - prevPositionA)/(ISRtimeA - prevISRtimeA); //in rad/ms
+  velocityA = velocityA*1000; //in rad/s
+  
+  prevPositionA = positionA; //set previous position
+  prevISRtimeA = ISRtimeA;
 }
 
 void encoderBISR(void) //RIGHT WHEEL
 {
-  //ISRtimeB = millis();
+  ISRtimeB = millis();
   //Compare A to B and count accordingly.
   //NOTE: Counts opposite of left motor because of orientation to keep counts positive when going forward.
   if (digitalRead(outputB1) == digitalRead(outputB2))
@@ -157,5 +155,13 @@ void encoderBISR(void) //RIGHT WHEEL
   {
     countsB -= 2; //CW
   }
-  //prevISRtimeB = ISRtimeB;
+  //Motor B calculations (right wheel)
+  //Calculate Position in rad
+  positionB = (countsB*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
+  
+  //Calculate velocity in rad/s
+  velocityB = (positionB - prevPositionB)/(ISRtimeB - prevISRtimeB); //in rad/ms
+  velocityB = velocityB*1000; //in rad/s
+  prevPositionB = positionB; //set previous position
+  prevISRtimeB = ISRtimeB;
 }

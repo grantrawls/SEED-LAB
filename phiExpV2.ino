@@ -1,5 +1,5 @@
-#include <Encoder.h>
-
+#include "Arduino.h"
+//Robot Name: Timmy Turbo
 //Red - motor power (connects 1 motor terminal) 
 //black - motor power (connects other motor terminal) 
 //green - encoder Ground (Connect to GND)
@@ -22,21 +22,21 @@ const int m1fb = 0;
 //Motor 2 current sense output (approx. 525 mV/A)
 const int m2fb = 1;
 
-//Encoder 1 Pin Config 
+//Encoder 1 Pin Config (LEFT WHEEL)
 const int outputA1 = 2;
 const int outputA2 = 11;
 
-//Encoder 2 Pin Config 
+//Encoder 2 Pin Config (RIGHT WHEEL)
 const int outputB1 = 3;
 const int outputB2 = 12;
 
+//Current Encoder Positions
+int currentRead1;
+int currentRead2;
 
-//int currentRead1;
-//int currentRead2;
-//int deltaTimeISRB = 0;
 //Control outputs
 
-int ctrlOut1 = 32; //0.5 Volts (1/24 of max PWM output)
+int ctrlOut1 = 32; //1 Volts 
 int ctrlOut2 = 32; 
 
 double rWheel = 0.06985; //meters
@@ -56,13 +56,16 @@ double prevPositionA = 0;
 double prevPositionB = 0;
 double velocityA = 0;
 double velocityB = 0;
-double rhoDot = 0;
+int ISRtimeA = 0;
+int ISRtimeB = 0;
+int prevISRtimeA = 0;
+int prevISRtimeB = 0;
+double phiDot = 0;
 
-//Timing variables
-const int period = 10;  
+//sampling
+const int period = 10; 
 int currTime = 0; 
-int calcTime = 0; 
-int prevTime = 0;
+int prevTime = 0; 
 
 // varaibles for serial communication
 String InputString = ""; // a string to hold incoming data
@@ -80,22 +83,22 @@ void setup() {
   pinMode(sf, INPUT);
   digitalWrite(disable, HIGH);
   digitalWrite(m1dir, LOW);
-  digitalWrite(m2dir, HIGH);
+  digitalWrite(m2dir, LOW);
   Serial.begin(115200);
 
-  //position and velocity reading scheme and interrupt declaration
+  //interrupt declaration for position and velocity reading scheme
   attachInterrupt(digitalPinToInterrupt(outputA1), encoderAISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(outputB1), encoderBISR, CHANGE);
   // reserve 200 bytes for the inputString
   InputString.reserve(200);
-  //Serial.println("Ready!"); // Let anyone on the other end of the serial line know that Arduino is ready
 }
 
 void loop() { 
   // put your main code here, to run repeatedly:
+  
+  
   analogWrite(m1pwm, ctrlOut1);
   analogWrite(m2pwm, ctrlOut2);
-  //Calculate Position in rad
   currTime = millis();
   if(currTime - prevTime > period)
   {
@@ -110,29 +113,25 @@ void loop() {
     prevPositionA = positionA; //set previous position
     prevPositionB = positionB; //set previous position
     //Calculate rhoDot, the forward velocity
-    rhoDot = (rWheel*(velocityA + velocityB))/2;
+    phiDot = (rWheel*(velocityA - velocityB))/dWheels;
     Serial.print(prevTime);
     Serial.print("\t ");
-    Serial.print(rhoDot);
+    Serial.print(phiDot);
     Serial.println("");
 //        Serial.println("");
 //    Serial.println(countsA);
 //    Serial.println(countsB);
   }
-
   
   if (currTime > 2000)
   {
     Serial.print("Finished ");
   }
-
-  //delay(50 - (calcTime - currTime));
 }
 
 void encoderAISR(void) //LEFT WHEEL
 {
-  //ISRtimeA = millis();
-  //Compare A to B and count accordingly. 
+  //Compare A to B and count accordingly.
   if (digitalRead(outputA1) == digitalRead(outputA2))
   {
     countsA -= 2; //CCW
@@ -141,14 +140,11 @@ void encoderAISR(void) //LEFT WHEEL
   {
     countsA += 2; //CW
   }
-  //prevISRtimeA = ISRtimeA;
 }
 
 void encoderBISR(void) //RIGHT WHEEL
 {
-  //ISRtimeB = millis();
   //Compare A to B and count accordingly.
-  //NOTE: Counts opposite of left motor because of orientation to keep counts positive when going forward.
   if (digitalRead(outputB1) == digitalRead(outputB2))
   {
     countsB += 2; //CCW
@@ -157,5 +153,4 @@ void encoderBISR(void) //RIGHT WHEEL
   {
     countsB -= 2; //CW
   }
-  //prevISRtimeB = ISRtimeB;
 }

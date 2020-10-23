@@ -1,5 +1,5 @@
-#include <Encoder.h>
-
+#include "Arduino.h"
+//Robot Name: Timmy Turbo
 //Red - motor power (connects 1 motor terminal) 
 //black - motor power (connects other motor terminal) 
 //green - encoder Ground (Connect to GND)
@@ -22,21 +22,24 @@ const int m1fb = 0;
 //Motor 2 current sense output (approx. 525 mV/A)
 const int m2fb = 1;
 
-//Encoder 1 Pin Config 
+//Encoder 1 Pin Config (LEFT WHEEL)
 const int outputA1 = 2;
 const int outputA2 = 11;
 
-//Encoder 2 Pin Config 
+//Encoder 2 Pin Config (RIGHT WHEEL)
 const int outputB1 = 3;
 const int outputB2 = 12;
 
-
-//int currentRead1;
-//int currentRead2;
-//int deltaTimeISRB = 0;
+#define ARRAY_SIZE 4
+double arrayA[ARRAY_SIZE];
+double arrayB[ARRAY_SIZE];
+int indexA = 0;
+int indexB = 0;
+int counterA = 0;
+int counterB = 0;
 //Control outputs
 
-int ctrlOut1 = 32; //0.5 Volts (1/24 of max PWM output)
+int ctrlOut1 = 32; //1 Volts 
 int ctrlOut2 = 32; 
 
 double rWheel = 0.06985; //meters
@@ -56,13 +59,16 @@ double prevPositionA = 0;
 double prevPositionB = 0;
 double velocityA = 0;
 double velocityB = 0;
-double rhoDot = 0;
+int ISRtimeA = 0;
+int ISRtimeB = 0;
+int prevISRtimeA = 0;
+int prevISRtimeB = 0;
+double phiDot = 0;
 
-//Timing variables
-const int period = 10;  
+//sampling
+const int period = 20; 
 int currTime = 0; 
 int calcTime = 0; 
-int prevTime = 0;
 
 // varaibles for serial communication
 String InputString = ""; // a string to hold incoming data
@@ -79,60 +85,45 @@ void setup() {
   pinMode(m2pwm, OUTPUT);
   pinMode(sf, INPUT);
   digitalWrite(disable, HIGH);
-  digitalWrite(m1dir, LOW);
+  digitalWrite(m1dir, HIGH);
   digitalWrite(m2dir, HIGH);
   Serial.begin(115200);
 
-  //position and velocity reading scheme and interrupt declaration
+  //interrupt declaration for position and velocity reading scheme
   attachInterrupt(digitalPinToInterrupt(outputA1), encoderAISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(outputB1), encoderBISR, CHANGE);
   // reserve 200 bytes for the inputString
   InputString.reserve(200);
-  //Serial.println("Ready!"); // Let anyone on the other end of the serial line know that Arduino is ready
 }
 
-void loop() { 
+void loop() { //include ISR to read encoder and calculate velocity
   // put your main code here, to run repeatedly:
+  
+  currTime = millis();
   analogWrite(m1pwm, ctrlOut1);
   analogWrite(m2pwm, ctrlOut2);
-  //Calculate Position in rad
-  currTime = millis();
-  if(currTime - prevTime > period)
+  phiDot = (rWheel*(velocityA - velocityB))/dWheels;
+  calcTime = millis();
+  if((indexA == 0 || indexA == 3))
   {
-    prevTime = currTime;
-    positionA = (countsA*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
-    positionB = (countsB*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
-    //Calculate velocity in rad/s
-    velocityA = (positionA - prevPositionA)/(period); //in rad/ms
-    velocityB = (positionB - prevPositionB)/(period); //in rad/ms
-    velocityA = velocityA*1000; //in rad/s
-    velocityB = velocityB*1000; //in rad/s
-    prevPositionA = positionA; //set previous position
-    prevPositionB = positionB; //set previous position
-    //Calculate rhoDot, the forward velocity
-    rhoDot = (rWheel*(velocityA + velocityB))/2;
-    Serial.print(prevTime);
-    Serial.print("\t ");
-    Serial.print(rhoDot);
-    Serial.println("");
-//        Serial.println("");
-//    Serial.println(countsA);
-//    Serial.println(countsB);
+  Serial.print(currTime);
+  Serial.print("\t ");
+  Serial.print(phiDot);
+  Serial.println("");
   }
-
-  
   if (currTime > 2000)
   {
     Serial.print("Finished ");
   }
-
-  //delay(50 - (calcTime - currTime));
+  delay(period - (calcTime - currTime));
 }
 
 void encoderAISR(void) //LEFT WHEEL
 {
   //ISRtimeA = millis();
-  //Compare A to B and count accordingly. 
+  indexA = counterA % 4;
+  arrayA[indexA] = millis();
+  //Compare A to B and count accordingly.
   if (digitalRead(outputA1) == digitalRead(outputA2))
   {
     countsA -= 2; //CCW
@@ -141,14 +132,27 @@ void encoderAISR(void) //LEFT WHEEL
   {
     countsA += 2; //CW
   }
+  
+  //Motor A Calculations
+  if(indexA == 0 || indexA == 3)
+  {
+    //Calculate Position in rad
+    positionA = (countsA*2*PI)/3200; 
+    //Calculate velocity in rad/s
+    velocityA = (positionA - prevPositionA)/(arrayA[3] - arrayA[0]); //in rad/ms
+    velocityA = velocityA*1000; //in rad/s
+    prevPositionA = positionA;
+  }
+  counterA++;
   //prevISRtimeA = ISRtimeA;
 }
 
 void encoderBISR(void) //RIGHT WHEEL
 {
   //ISRtimeB = millis();
+  indexB = counterB % 4;
+  arrayB[indexB] = millis();
   //Compare A to B and count accordingly.
-  //NOTE: Counts opposite of left motor because of orientation to keep counts positive when going forward.
   if (digitalRead(outputB1) == digitalRead(outputB2))
   {
     countsB += 2; //CCW
@@ -157,5 +161,17 @@ void encoderBISR(void) //RIGHT WHEEL
   {
     countsB -= 2; //CW
   }
+  
+  //Motor B Calculations
+  if(indexB == 0 || indexB == 3)
+  {
+    //Calculate Position in rad
+    positionB = (countsB*2*PI)/3200; 
+    //Calculate velocity in rad/s
+    velocityB = (positionB - prevPositionB)/(arrayB[3] - arrayB[0]); //in rad/ms
+    velocityB = velocityB*1000; //in rad/s
+    prevPositionB = positionB;
+  }
+  counterB++;
   //prevISRtimeB = ISRtimeB;
 }
