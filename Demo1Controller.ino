@@ -137,18 +137,18 @@ void encoderBISR(void) //RIGHT WHEEL
 }
 double calcPI(double input)
 {
-
+  
   Serial.print(input);
   Serial.print("\t");
   Serial.print(posError);
   Serial.print("\t");
-  currTime = millis();
-  elapsedTime = currTime - prevTime;
-  posError = setPosition - input;
-  cumError += posError*elapsedTime;
+  currTime = millis();               //Found this link: https://microcontrollerslab.com/pid-controller-implementation-using-arduino/
+  elapsedTime = currTime - prevTime; //shouldn't this be elapsedTime += currTime ? This would be the bounds on the integral 
+  posError = setPosition - input; //This is the integrand
+  cumError += posError*elapsedTime; //This is the full integral - A sum of the error over the time elapsed
   rateError = (posError - prevError)/elapsedTime;
-  posOutput = rhoKp*posError + rhoKi*cumError; //V bar
-  posOutput = 255*(posOutput/16);
+  posOutput = rhoKp*posError + rhoKi*cumError; //V bar calculated by Kp times error plus Ki times integral of error
+  posOutput = 255*(posOutput/16); //Turn the voltage to a PWM signal FOR 12 VOLTS - motor data sheet says 12V motor, however battery is only 8(ish) volts 
   Serial.print(cumError);
   Serial.print("\t");
   Serial.print(posOutput);
