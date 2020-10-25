@@ -43,7 +43,7 @@ def main():
                     angle = (center[0] - ref) * ((THETA/2)/(ref))
                     loc = "Angle is +" + str(angle)
                 if(center[0] < ref):
-                    angle = (ref - center[0]) * ((THETA/2)/(ref))
+                    angle = -(ref - center[0]) * ((THETA/2)/(ref))
                     loc = "Angle is -" + str(angle)
                 cv2.putText(frame, loc, org = (0, 400), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color = (0, 255, 255))
                 debug("The center is: " + str(center))
