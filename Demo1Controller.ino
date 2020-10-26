@@ -44,22 +44,53 @@ int prevISRtimeB = 0;
 double rhoDot = 0;
 double rhoInput = 0;
 double rhoOutput = 0;
+int maxCtrl = 90; //max PWM signal
+int minCtrl = 63; //minimum PWM signal to move robot consistently forward
+const int period = 20;  
+int currPosTime = 0; 
+int prevPosTime = 0;
+int deltaPosTime = 0;
 
-const int period = 10;  
-int currTime = 0; 
-int prevTime = 0;
-int elapsedTime = 0;
+double choosePosition = 0.3048; //meters
 double setPosition = 0;
 double currPosition = 0;
 double posError = 0;
-double prevError = 0;
-double cumError = 0;
-double rateError = 0;
-double rhoKp = 10; //UNITS
-double rhoKi = 0.5; //UNITS
+double prevPosError = 0;
+double totalPosError = 0;
+double ratePosError = 0;
+double deltaPosError = 0;
+double prevPosTotalError = 0;
+
+double chooseAngle = 2*PI; //radians
+int currAngleTime = 0; 
+int prevAngleTime = 0;
+int deltaAngleTime = 0;
+double setAngle = 0;
+double currAngle = 0;
+double angleError = 0;
+double prevAngleError = 0;
+double totalAngleError = 0;
+double rateAngleError = 0;
+double deltaAngleError = 0;
+double prevAngleTotalError = 0;
+
+double rhoKp = 10; //UNITS //10
+double rhoKi = 0.5; //UNITS //0.05
 double posOutput = 0; 
 double rWheel = 0.06985; //meters
+double dWheels = 0.269875; //meters
 
+double phiKp = 10; //UNITS //10
+double phiKi = 0.5; //UNITS //0.05
+double phiInput = 0;
+double angleOutput = 0; 
+bool goForward = 0;
+bool notGoneForward = 1;
+bool runFirst = 1;
+bool runSecond = 1;
+
+int tempCountsA = 0;
+int tempCountsB = 0;
 void setup() {
   // put your setup code here, to run once:
   pinMode(outputA1, INPUT_PULLUP);
@@ -75,18 +106,41 @@ void setup() {
   //position and velocity reading scheme and interrupt declaration
   attachInterrupt(digitalPinToInterrupt(outputA1), encoderAISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(outputB1), encoderBISR, CHANGE);
-  setPosition = 0.5; //meters
 }
 
 void loop() {
   // put your main code here, to run repeatedly:
-  rhoInput = (positionA + positionB)/2;
-  rhoInput = rhoInput*rWheel;
-  rhoOutput = calcPI(rhoInput);
-  digitalWrite(m1dir, LOW);
-  digitalWrite(m2dir, HIGH);
-  analogWrite(m1pwm, rhoOutput);
-  analogWrite(m2pwm, rhoOutput);
+  
+  //phiCalcPI(chooseAngle);
+        if(goForward == 1)
+      {
+       if (runFirst == 1)
+       {
+        Serial.println("GOING FORWARDS");
+        tempCountsA = countsA;//
+        tempCountsB = countsB;//
+        countsA = 0;//
+        countsB = 0;//
+        prevPosTime = currAngleTime;//
+        runFirst = 0;
+       }
+        rhoCalcPI(0.3048);
+
+        if (runSecond == 0)
+        {
+        goForward = 0;//
+        countsA = tempCountsA;//
+        countsB = tempCountsB;//
+        runSecond = 1;
+        }
+      }else
+      {
+        phiCalcPI(chooseAngle);
+      }
+  //rhoCalcPI(choosePosition);
+  //calculate Va and Vb from Vbar and deltaV
+  //change PWM conversion here
+
 }
 void encoderAISR(void) //LEFT WHEEL
 {
@@ -102,7 +156,7 @@ void encoderAISR(void) //LEFT WHEEL
   }
   //Motor A calculations (left wheel)
   //Calculate Position in rad
-  positionA = (countsA*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
+  positionA = (countsA*2*PI)/2950; // change 3200 to 64 if encoder counting in encoder counts not motor counts
   
   //Calculate velocity in rad/s
   velocityA = (positionA - prevPositionA)/(ISRtimeA - prevISRtimeA); //in rad/ms
@@ -127,7 +181,7 @@ void encoderBISR(void) //RIGHT WHEEL
   }
   //Motor B calculations (right wheel)
   //Calculate Position in rad
-  positionB = (countsB*2*PI)/3200; // change 3200 to 64 if encoder counting in encoder counts not motor counts
+  positionB = (countsB*2*PI)/2950; // change 3200 to 64 if encoder counting in encoder counts not motor counts
   
   //Calculate velocity in rad/s
   velocityB = (positionB - prevPositionB)/(ISRtimeB - prevISRtimeB); //in rad/ms
@@ -135,32 +189,144 @@ void encoderBISR(void) //RIGHT WHEEL
   prevPositionB = positionB; //set previous position
   prevISRtimeB = ISRtimeB;
 }
-double calcPI(double input)
+
+void rhoCalcPI(double setPosition)
 {
   
-  Serial.print(input);
-  Serial.print("\t");
-  Serial.print(posError);
-  Serial.print("\t");
-  currTime = millis();               //Found this link: https://microcontrollerslab.com/pid-controller-implementation-using-arduino/
-  elapsedTime = currTime - prevTime; //shouldn't this be elapsedTime += currTime ? This would be the bounds on the integral 
-  posError = setPosition - input; //This is the integrand
-  cumError += posError*elapsedTime; //This is the full integral - A sum of the error over the time elapsed
-  rateError = (posError - prevError)/elapsedTime;
-  posOutput = rhoKp*posError + rhoKi*cumError; //V bar calculated by Kp times error plus Ki times integral of error
-  posOutput = 255*(posOutput/16); //Turn the voltage to a PWM signal FOR 12 VOLTS - motor data sheet says 12V motor, however battery is only 8(ish) volts 
-  Serial.print(cumError);
-  Serial.print("\t");
-  Serial.print(posOutput);
-  Serial.println("");
-  if (posOutput > 127)
+  //Set robot to go forward
+  if(posError > 0)
   {
-    posOutput = 127;
+  digitalWrite(m1dir, LOW);
+  digitalWrite(m2dir, HIGH);
+  }else
+  {
+  digitalWrite(m1dir, HIGH);
+  digitalWrite(m2dir, LOW);
   }
-  prevError = posError;
-  prevTime = currTime;
+  currPosTime = millis();
+  deltaPosTime = currPosTime - prevPosTime;
+  rhoInput = (positionA + positionB)/2;
+  rhoInput = rhoInput*rWheel;
+  
+  if(countsA > 14000 && countsB > 14000)
+  {
+    setPosition = setPosition - rhoInput;
+    countsA = 0;
+    countsB = 0;
+  }
 
-  return(posOutput);
+  if(deltaPosTime >= period)
+  {
+    posError = setPosition - rhoInput;///
+    totalPosError += posError; //Integrand
+    deltaPosError = posError - prevPosError;
+    posOutput = rhoKp*posError + rhoKi*deltaPosError*period; //V bar (Volts)
+    posOutput = (256*(posOutput/24)) - 1; //PWM signal change for 12 volt motor (battery at 8 though?) and split in half because two wheels.
+
+    if (posOutput > maxCtrl)
+    {
+      posOutput = maxCtrl;
+    }else if(posOutput < minCtrl)
+    {
+      posOutput = minCtrl;
+    }if(posError > -0.01 && posError < 0.01)
+    {
+      posOutput = rhoKp*posError + rhoKi*deltaPosError*period; //V bar (Volts)
+      runSecond = 0;
+      goForward = 0;
+    }
+    prevPosError = posError;
+    prevPosTime = currPosTime;
+    prevPosTotalError = totalPosError;
+  }
+    Serial.print(rhoInput);
+    Serial.print("\t");
+    Serial.print(posError);
+    Serial.print("\t");
+    Serial.print(totalPosError);
+    Serial.print("\t");
+    Serial.print(posOutput);
+    Serial.print("\t");
+    Serial.print(countsA);
+    Serial.print("\t");
+    Serial.print(countsB);
+    Serial.println("");
+  analogWrite(m1pwm, posOutput); //motor A input
+  analogWrite(m2pwm, posOutput); //motor B input
 }
+
+
+void phiCalcPI(double setAngle)
+{
+  //Set robot to turn LEFT
+  if(angleError > 0.01)
+  {
+  digitalWrite(m1dir, HIGH);
+  digitalWrite(m2dir, HIGH);
+  }else if(angleError < -0.01) //set to turn RIGHT
+  {
+  digitalWrite(m1dir, LOW);
+  digitalWrite(m2dir, LOW);
+  }
+  currAngleTime = millis();
+  deltaAngleTime = currAngleTime - prevAngleTime;
+  phiInput = (-1*((positionA - positionB)/2))*(2*rWheel/dWheels);
+  //phiInput = (2*phiInput*rWheel)/dWheels;
+
+  //fix this for phi controller (if statements)
+  /*if(countsA > 14000 && countsB > 14000)
+  {
+    setAngle = setAngle - phiInput;
+    countsA = 0;
+    countsB = 0;
+  }*/
+  
+
+  if(deltaAngleTime >= period)
+  {
+    angleError = setAngle - phiInput;
+    totalAngleError += angleError; 
+    deltaAngleError = angleError - prevAngleError;
+    angleOutput = phiKp*angleError + phiKi*deltaAngleError*period; //V bar (Volts)
+    angleOutput = (256*(angleOutput/24)) - 1; //PWM signal change for 12 volt motor (battery at 8 though?) and split in half because two wheels.
+
+    if (angleOutput > maxCtrl)
+    {
+      angleOutput = maxCtrl;
+    }else if(angleOutput < minCtrl)
+    {
+      angleOutput = minCtrl;
+    }if(angleError > -0.01 && angleError < 0.01)
+    {
+      angleOutput = phiKp*angleError + phiKi*deltaAngleError*period; //V bar (Volts)
+      if(goForward == 0)
+      {
+        if(notGoneForward == 1)
+        {
+          goForward = 1;
+          notGoneForward = 0;
+        }
+      }
+    }
+    prevAngleError = angleError;
+    prevAngleTime = currAngleTime;
+    prevAngleTotalError = totalAngleError;
+  }
+    Serial.print(phiInput);
+    Serial.print("\t");
+    Serial.print(angleError);
+    Serial.print("\t");
+    Serial.print(totalAngleError);
+    Serial.print("\t");
+    Serial.print(angleOutput);
+    Serial.print("\t");
+    Serial.print(countsA);
+    Serial.print("\t");
+    Serial.print(countsB);
+    Serial.println("");
+  analogWrite(m1pwm, angleOutput); //motor A input
+  analogWrite(m2pwm, angleOutput); //motor B input
+}
+
 
   
