@@ -94,18 +94,22 @@ double rateAngleError = 0;
 double deltaAngleError = 0;
 double prevAngleTotalError = 0;
 
+
+//Controller parameters (rho)
 double rhoKp = 10; // V/rad
 double rhoKi = 0.5; // V/(rad*sec)
 double posOutput = 0; 
 double rWheel = 0.06985; //meters
 double dWheels = 0.269875; //meters
 
+
+//Controller parameters (phi)
 double phiKp = 10; // V/rad
 double phiKi = 0.5; // V/(rad*sec)
 double phiInput = 0;
 double angleOutput = 0; 
 
-//Encompass function specific variab;es
+//Encompass function specific variables
 double phiDot = 0;
 double rhoDot = 0;
 double rhoSetPosition = 0;
@@ -124,8 +128,10 @@ bool doneSearching = 0;
 bool oneFootAway = 0;
 bool hasEncompassed = 0;
 
+//Set up for Information from PI
 #define SLAVE_ADDRESS 0x04
 byte message; //read from Pi
+
 
 void setup() {
   // put your setup code here, to run once:
@@ -151,27 +157,35 @@ void setup() {
 void loop() {
   // put your main code here, to run repeatedly:
 
+  //If we are done searching for the beacon and haven't encircled (encompassed) the beacon continue...
   if (doneSearching && (!hasEncompassed)) //Beacon is found (Pi sends message = 1)
   {
+    //If we haven't made sure the robot is centered on the beacon, continue...
     if(!corrected)
     {
+    //Correct the robot to make sure that the robot is centered on the beacon
     Serial.println("CORRECTING");
     rotateToPhi(-PI/16);
     corrected = 1;
     }
+    //Proceed forwards towards the beacon
     Serial.println("GOING FORWARDS");
     easyGoForwards(); 
+    //If we are one foot away from the beacon, continue...
     if(oneFootAway) //when camera tells the robot it is one foot away (Pi sends message = 2)
     {
       //digitalWrite(disable, LOW); //For demo 2.1
       Serial.println("ONE FOOT");
+      //If we haven't encircled the beacon, continue...
       if (!hasEncompassed)
       {
+        //Encompass the beacon.
          Serial.println("ENCOMPASSING");
          encompass(); //go in a diamond around the beacon
          hasEncompassed = 1;
       }
     }
+    //If we haven't reached any of the progress points above, search for the beacon...
   } else if(!hasEncompassed) //only search at the start
     {
       //rotating to find beacon
@@ -228,6 +242,7 @@ void encoderBISR(void) //RIGHT WHEEL
   prevISRtimeB = ISRtimeB;
 }
 
+//Go forwards to a given distance (PID)
 void rhoCalcPI(double setPosition)
 {
 
@@ -303,7 +318,7 @@ void rhoCalcPI(double setPosition)
   analogWrite(m2pwm, posOutput); //motor B input
 }
 
-
+//Rotate to a given angle (PID).
 void phiCalcPI(double setAngle)
 {
   //Set robot to turn LEFT
@@ -370,6 +385,7 @@ void phiCalcPI(double setAngle)
   
 }
 
+//Rotate to a given distance (Non-PID)
 void rotateToPhi(double phiSetPosition){
   Serial.println("ROTATION FUNCTION STARTED");
     // rhoInput is the current forward position
@@ -426,6 +442,8 @@ void rotateToPhi(double phiSetPosition){
     analogWrite(m1pwm, 0);
     analogWrite(m2pwm, 0);
   }
+
+//Go forwards until hit desired position (Non-PID)
 double goForwards(double distance){
   //rhoInput is currentPosition
   countsA = 0;
@@ -486,6 +504,7 @@ double goForwards(double distance){
 
  }
 
+//Function which encircles the beacon.
 void encompass(void)
 {
   motorSpeed = 80;
@@ -530,6 +549,8 @@ void receiveData(int byteCount){
    // Wire.write(choosePos);
 //}
 
+
+//Function that makes the robot go forwards until it gets to one foot away from the robot.
 void easyGoForwards(void)
 {
   digitalWrite(m1dir, LOW);
